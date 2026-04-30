@@ -195,10 +195,10 @@ class TestValidationFunctions:
 
     def test_validate_datastore_id_invalid_length(self):
         """Test invalid datastore ID length."""
-        with pytest.raises(ValueError, match='Datastore ID must be 32 characters'):
+        with pytest.raises(ValueError, match='Datastore ID must be 32 alphanumeric characters'):
             validate_datastore_id('short-id')
 
     def test_validate_datastore_id_empty(self):
         """Test empty datastore ID."""
-        with pytest.raises(ValueError, match='Datastore ID must be 32 characters'):
+        with pytest.raises(ValueError, match='Datastore ID must be 32 alphanumeric characters'):
             validate_datastore_id('')

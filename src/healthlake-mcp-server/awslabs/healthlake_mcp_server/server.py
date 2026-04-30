@@ -420,7 +420,7 @@ def create_healthlake_server(read_only: bool = False) -> Server:
                         },
                         'next_token': {
                             'type': 'string',
-                            'description': "Pagination token for retrieving the next page of results. Use the complete URL from a previous response's pagination.next_token field. When provided, other search parameters are ignored.",
+                            'description': 'Opaque pagination token returned by a prior call to this tool. Treat as an unmodifiable string - do not construct, parse, or modify. Never pass a URL here, even one taken from a FHIR Bundle link; only values this tool emitted in an earlier pagination.next_token field are valid. When provided, other search parameters are ignored.',
                         },
                     },
                     'required': ['datastore_id', 'resource_type'],
@@ -454,7 +454,7 @@ def create_healthlake_server(read_only: bool = False) -> Server:
                         },
                         'next_token': {
                             'type': 'string',
-                            'description': "Pagination token for retrieving the next page of results. Use the complete URL from a previous response's pagination.next_token field.",
+                            'description': 'Opaque pagination token returned by a prior call to this tool. Treat as an unmodifiable string - do not construct, parse, or modify. Never pass a URL here, even one taken from a FHIR Bundle link; only values this tool emitted in an earlier pagination.next_token field are valid.',
                         },
                     },
                     'required': ['datastore_id', 'patient_id'],

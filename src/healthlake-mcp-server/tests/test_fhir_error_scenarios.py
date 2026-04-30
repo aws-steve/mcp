@@ -148,16 +148,16 @@ class TestFHIRErrorScenarios:
         """Test authentication error handling."""
         with patch.object(client, '_get_aws_auth', side_effect=Exception('Auth failed')):
             with pytest.raises(Exception, match='Auth failed'):
-                await client.read_resource('test-datastore', 'Patient', '123')
+                await client.read_resource('zz0123456789abcdef0123456789zzzz', 'Patient', '123')
 
     def test_validate_datastore_id_edge_cases(self):
         """Test datastore ID validation edge cases."""
         # Test empty string
-        with pytest.raises(ValueError, match='Datastore ID must be 32 characters'):
+        with pytest.raises(ValueError, match='Datastore ID must be 32 alphanumeric characters'):
             validate_datastore_id('')
 
         # Test wrong length
-        with pytest.raises(ValueError, match='Datastore ID must be 32 characters'):
+        with pytest.raises(ValueError, match='Datastore ID must be 32 alphanumeric characters'):
             validate_datastore_id('short')
 
         # Test valid ID
@@ -168,7 +168,7 @@ class TestFHIRErrorScenarios:
         """Test that FHIRSearchError is re-raised - covers line 478."""
         with patch.object(client, '_validate_search_request', return_value=['error']):
             with pytest.raises(FHIRSearchError):
-                await client.search_resources('test-datastore', 'Patient')
+                await client.search_resources('zz0123456789abcdef0123456789zzzz', 'Patient')
 
     async def test_export_job_error_handling(self, client):
         """Test export job error handling - covers line 654."""
@@ -186,19 +186,20 @@ class TestFHIRErrorScenarios:
                 )
 
     async def test_pagination_next_url_extraction(self, client):
-        """Test pagination next URL extraction - covers lines 330-332."""
+        """``next_token`` is the opaque ``page`` value from the next link."""
         bundle_with_next = {
             'resourceType': 'Bundle',
             'link': [
                 {'relation': 'self', 'url': 'https://example.com/self'},
-                {'relation': 'next', 'url': 'https://example.com/next?page=2'},
+                {'relation': 'next', 'url': 'https://example.com/next?page=PAGE2TOKEN'},
             ],
             'entry': [],
         }
 
         result = client._process_bundle(bundle_with_next)
         assert result['pagination']['has_next'] is True
-        assert 'next' in result['pagination']['next_token']
+        # Opaque token - just the page value, not a URL.
+        assert result['pagination']['next_token'] == 'PAGE2TOKEN'
 
     async def test_import_job_with_kms_key(self, client):
         """Test import job with KMS key - covers line 599."""

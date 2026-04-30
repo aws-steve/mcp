@@ -105,7 +105,9 @@ class TestResourceOperations:
                     )
 
                     result = await mock_client.create_resource(
-                        'test-datastore', 'Patient', {'resourceType': 'Patient'}
+                        'zz0123456789abcdef0123456789zzzz',
+                        'Patient',
+                        {'resourceType': 'Patient'},
                     )
 
                     assert result == expected_response
@@ -128,7 +130,7 @@ class TestResourceOperations:
                     )
 
                     result = await mock_client.read_resource(
-                        'test-datastore', 'Patient', 'test-id'
+                        'zz0123456789abcdef0123456789zzzz', 'Patient', 'test-id'
                     )
 
                     assert result == expected_response

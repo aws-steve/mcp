@@ -22,17 +22,17 @@ class TestValidateDatastoreId:
 
     def test_invalid_length_short(self):
         """Test datastore ID too short."""
-        with pytest.raises(ValueError, match='must be 32 characters'):
+        with pytest.raises(ValueError, match='must be 32 alphanumeric characters'):
             validate_datastore_id('short')
 
     def test_invalid_length_long(self):
         """Test datastore ID too long."""
-        with pytest.raises(ValueError, match='must be 32 characters'):
+        with pytest.raises(ValueError, match='must be 32 alphanumeric characters'):
             validate_datastore_id('1234567890123456789012345678901234')
 
     def test_empty_datastore_id(self):
         """Test empty datastore ID."""
-        with pytest.raises(ValueError, match='must be 32 characters'):
+        with pytest.raises(ValueError, match='must be 32 alphanumeric characters'):
             validate_datastore_id('')
 
 
@@ -946,7 +946,7 @@ class TestBundleProcessingEdgeCases:
         assert 'obs-1' in result['included']['Observation']
 
     def test_process_bundle_malformed_pagination_url(self):
-        """Test bundle processing with malformed pagination URL."""
+        """Malformed next URLs cannot yield an opaque token; next_token is None."""
         client = HealthLakeClient.__new__(HealthLakeClient)
 
         bundle = {
@@ -957,9 +957,10 @@ class TestBundleProcessingEdgeCases:
 
         result = client._process_bundle(bundle)
 
-        # Should handle malformed URL gracefully
-        assert result['pagination']['has_next'] is True
-        assert result['pagination']['next_token'] == 'malformed-url-without-proper-encoding'
+        # With the opaque-token redesign, a URL that does not contain a
+        # ``page`` query parameter yields no next_token.
+        assert result['pagination']['has_next'] is False
+        assert result['pagination']['next_token'] is None
 
     def test_build_search_request_list_values(self):
         """Test search request building with list values."""
@@ -1004,20 +1005,20 @@ class TestFHIRErrorHandling:
     """Test FHIR error handling for missing coverage."""
 
     def test_pagination_error_handling(self):
-        """Test pagination error handling."""
+        """A next link without a ``page`` query param yields no next_token."""
         client = HealthLakeClient.__new__(HealthLakeClient)
 
-        # Test with malformed next URL that causes exception during processing
         bundle = {
             'resourceType': 'Bundle',
             'entry': [{'resource': {'resourceType': 'Patient', 'id': '1'}}],
             'link': [{'relation': 'next', 'url': 'https://example.com/next?param=value'}],
         }
 
-        # This should process without error and extract the next token
         result = client._process_bundle(bundle)
-        assert result['pagination']['has_next'] is True
-        assert 'next' in result['pagination']['next_token']
+        # Under the opaque-token design, only the ``page`` value is
+        # extracted. If it's absent, next_token is None.
+        assert result['pagination']['has_next'] is False
+        assert result['pagination']['next_token'] is None
 
 
 class TestAWSAuthErrors:
@@ -1040,14 +1041,13 @@ class TestBundleProcessingExtended:
 
     @patch('awslabs.healthlake_mcp_server.fhir_operations.boto3.Session')
     def test_process_bundle_url_parsing_error(self, mock_session):
-        """Test URL parsing exception handling (coverage: lines 281-283)."""
+        """Malformed next URL without a ``page`` param yields no next_token."""
         mock_session_instance = Mock()
         mock_session.return_value = mock_session_instance
         mock_session_instance.client.return_value = Mock()
 
         client = HealthLakeClient()
 
-        # Bundle with malformed URL that causes parsing error
         bundle = {
             'resourceType': 'Bundle',
             'entry': [],
@@ -1056,9 +1056,11 @@ class TestBundleProcessingExtended:
 
         result = client._process_bundle(bundle)
 
-        # Should handle error gracefully and still return pagination
+        # Pagination metadata is always present; under the opaque-token
+        # design a URL lacking a valid ``page`` value yields no token.
         assert 'pagination' in result
-        assert result['pagination']['has_next'] is True
+        assert result['pagination']['has_next'] is False
+        assert result['pagination']['next_token'] is None
 
 
 class TestJobOperationErrorHandling:
