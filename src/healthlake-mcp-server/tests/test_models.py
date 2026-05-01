@@ -91,23 +91,25 @@ class TestDatastoreFilter:
 
     def test_valid_active_filter(self):
         """Test valid ACTIVE filter."""
-        filter_obj = DatastoreFilter(status='ACTIVE')
+        # ``status=`` still works at runtime thanks to ``populate_by_name``,
+        # but pyright's Pydantic plugin only sees the aliased parameter.
+        filter_obj = DatastoreFilter(status='ACTIVE')  # pyright: ignore[reportCallIssue]
         assert filter_obj.status == 'ACTIVE'
 
     def test_valid_creating_filter(self):
         """Test valid CREATING filter."""
-        filter_obj = DatastoreFilter(status='CREATING')
+        filter_obj = DatastoreFilter(status='CREATING')  # pyright: ignore[reportCallIssue]
         assert filter_obj.status == 'CREATING'
 
     def test_none_status(self):
         """Test None status (optional field)."""
-        filter_obj = DatastoreFilter(status=None)
+        filter_obj = DatastoreFilter(status=None)  # pyright: ignore[reportCallIssue]
         assert filter_obj.status is None
 
     def test_invalid_status_value(self):
         """Test invalid status value."""
         with pytest.raises(ValidationError):
-            DatastoreFilter(status='INVALID_STATUS')
+            DatastoreFilter(status='INVALID_STATUS')  # pyright: ignore[reportCallIssue]
 
     def test_filter_alias_populates_status(self):
         """The MCP input name ``filter`` populates the underlying ``status``.

@@ -254,6 +254,7 @@ class TestPaginationEndToEndWithMockedHttpx:
                     next_token=token,
                 )
 
+        assert get_mock.await_args is not None
         called_url = get_mock.await_args.args[0]
         assert '_count=5' in called_url, f'expected captured count in URL, got {called_url!r}'
         assert '_count=100' not in called_url
@@ -304,6 +305,7 @@ class TestPaginationEndToEndWithMockedHttpx:
                     next_token=token,
                 )
 
+        assert get_mock.await_args is not None
         called_url = get_mock.await_args.args[0]
         assert '_count=25' in called_url
         assert '_count=100' not in called_url
