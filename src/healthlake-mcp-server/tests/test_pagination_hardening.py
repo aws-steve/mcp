@@ -31,6 +31,7 @@ import pytest
 from awslabs.healthlake_mcp_server.fhir_operations import (
     AWSAuth,
     HealthLakeClient,
+    _decode_pagination_token,
     validate_datastore_id,
     validate_fhir_resource_id,
     validate_fhir_resource_type,
@@ -210,13 +211,21 @@ class TestFhirResourceRegex:
 
 
 class TestBundleOpaqueTokenExtraction:
-    """``_process_bundle`` returns only the opaque ``page`` value."""
+    """``_process_bundle`` returns an opaque token packing both page and count."""
 
     def _client(self):
         return HealthLakeClient.__new__(HealthLakeClient)
 
-    def test_extracts_only_page_param(self):
-        """Security regression test."""
+    def test_extracts_page_and_count_into_opaque_token(self):
+        """Security regression test.
+
+        The emitted ``next_token`` is opaque (never a URL) and round-trips
+        through ``_decode_pagination_token`` to the original ``page`` value
+        paired with the ``_count`` HealthLake had in effect when emitting
+        the cursor. Capturing ``_count`` is what fixes Bug #3: the
+        follow-up call must use the server's ``_count``, not whatever the
+        caller happens to supply.
+        """
         bundle = {
             'resourceType': 'Bundle',
             'link': [
@@ -224,18 +233,22 @@ class TestBundleOpaqueTokenExtraction:
                     'relation': 'next',
                     'url': (
                         'https://healthlake.us-east-1.amazonaws.com/datastore/'
-                        'abc/r4/Patient?_count=100&page=OPAQUE123'
+                        'abc/r4/Patient?_count=5&page=OPAQUE123'
                     ),
                 }
             ],
             'entry': [],
         }
         result = self._client()._process_bundle(bundle)
-        # Critical security property: the token is NOT a URL. It is only
-        # the ``page`` value. Reconstructing the full URL is the server's
-        # responsibility on the next call.
-        assert result['pagination']['next_token'] == 'OPAQUE123'
+        token = result['pagination']['next_token']
         assert result['pagination']['has_next'] is True
+        # Still passes the caller-facing validator.
+        assert validate_pagination_token(token) == token
+        # Not a URL, not the bare page value — opaque.
+        assert token != 'OPAQUE123'
+        assert '://' not in token
+        # Round-trips to the captured ``page`` + ``_count`` pair.
+        assert _decode_pagination_token(token) == {'page': 'OPAQUE123', 'count': 5}
 
     def test_returns_none_when_no_next_link(self):
         """Security regression test."""
@@ -268,6 +281,53 @@ class TestBundleOpaqueTokenExtraction:
         result = self._client()._process_bundle(bundle)
         assert result['pagination']['next_token'] is None
 
+    def test_defaults_count_when_next_link_omits_it(self):
+        """Security regression test.
+
+        If HealthLake's ``next`` link somehow lacks ``_count``, we fall
+        back to ``MAX_SEARCH_COUNT`` rather than fail extraction — the
+        page cursor is still usable with the default count.
+        """
+        bundle = {
+            'resourceType': 'Bundle',
+            'link': [
+                {'relation': 'next', 'url': 'https://x/y?page=OPAQUE123'},
+            ],
+            'entry': [],
+        }
+        result = self._client()._process_bundle(bundle)
+        token = result['pagination']['next_token']
+        assert token is not None
+        decoded = _decode_pagination_token(token)
+        assert decoded == {'page': 'OPAQUE123', 'count': 100}
+
+    def test_clamps_out_of_range_count_from_next_link(self):
+        """Security regression test.
+
+        If HealthLake's ``next`` link emits a ``_count`` outside the
+        documented 1–100 range (or a non-integer), fall back to the
+        default rather than cache a value the client validator would
+        later reject.
+        """
+        for bad_count in ('0', '101', '-5', 'abc', '1.5'):
+            bundle = {
+                'resourceType': 'Bundle',
+                'link': [
+                    {
+                        'relation': 'next',
+                        'url': f'https://x/y?_count={bad_count}&page=OPAQUE123',
+                    },
+                ],
+                'entry': [],
+            }
+            result = self._client()._process_bundle(bundle)
+            token = result['pagination']['next_token']
+            assert token is not None, f'token unexpectedly None for _count={bad_count!r}'
+            decoded = _decode_pagination_token(token)
+            assert decoded == {'page': 'OPAQUE123', 'count': 100}, (
+                f'expected fallback count for _count={bad_count!r}, got {decoded!r}'
+            )
+
     def test_bundle_with_includes_also_emits_opaque(self):
         """Security regression test."""
         bundle = {
@@ -284,8 +344,11 @@ class TestBundleOpaqueTokenExtraction:
             'entry': [{'search': {'mode': 'match'}, 'resource': {'resourceType': 'Patient'}}],
         }
         result = self._client()._process_bundle_with_includes(bundle)
-        assert result['pagination']['next_token'] == 'TOK-XYZ'
+        token = result['pagination']['next_token']
         assert result['pagination']['has_next'] is True
+        assert token is not None
+        # Still opaque; decodes to the expected page/count pair.
+        assert _decode_pagination_token(token) == {'page': 'TOK-XYZ', 'count': 50}
 
 
 # ---------------------------------------------------------------------------

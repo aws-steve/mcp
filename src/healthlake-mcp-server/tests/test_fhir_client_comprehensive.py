@@ -495,13 +495,13 @@ class TestExportJobOperations:
 
     @pytest.mark.asyncio
     async def test_start_export_job_success(self, mock_client):
-        """Test successful export job start (coverage: lines 640-653)."""
+        """Transforms snake_case output_data_config into the PascalCase boto3 shape."""
         expected_response = {'JobId': 'export-123', 'JobStatus': 'SUBMITTED'}
         mock_client.healthlake_client.start_fhir_export_job.return_value = expected_response
 
         result = await mock_client.start_export_job(
             datastore_id='12345678901234567890123456789012',
-            output_data_config={'S3Configuration': {'S3Uri': 's3://bucket/export'}},
+            output_data_config={'s3_configuration': {'s3_uri': 's3://bucket/export'}},
             data_access_role_arn='arn:aws:iam::123456789012:role/HealthLakeRole',
         )
 
@@ -514,13 +514,13 @@ class TestExportJobOperations:
 
     @pytest.mark.asyncio
     async def test_start_export_job_with_job_name(self, mock_client):
-        """Test export job start with optional job name."""
+        """Export job start with optional job name and snake_case config."""
         expected_response = {'JobId': 'export-456', 'JobStatus': 'SUBMITTED'}
         mock_client.healthlake_client.start_fhir_export_job.return_value = expected_response
 
         result = await mock_client.start_export_job(
             datastore_id='12345678901234567890123456789012',
-            output_data_config={'S3Configuration': {'S3Uri': 's3://bucket/export'}},
+            output_data_config={'s3_configuration': {'s3_uri': 's3://bucket/export'}},
             data_access_role_arn='arn:aws:iam::123456789012:role/HealthLakeRole',
             job_name='MyExportJob',
         )
@@ -535,16 +535,21 @@ class TestExportJobOperations:
 
     @pytest.mark.asyncio
     async def test_start_export_job_client_error(self, mock_client):
-        """Test export job start with ClientError."""
+        """Export job start with a ValidationException is rewrapped as ValueError.
+
+        Mirrors start_import_job's error-mapping contract so the MCP server
+        layer maps the failure to ``validation_error`` rather than a
+        generic ``server_error``.
+        """
         error_response = {'Error': {'Code': 'ValidationException', 'Message': 'Invalid S3 URI'}}
         mock_client.healthlake_client.start_fhir_export_job.side_effect = ClientError(
             error_response, 'StartFHIRExportJob'
         )
 
-        with pytest.raises(ClientError):
+        with pytest.raises(ValueError, match='Invalid parameters'):
             await mock_client.start_export_job(
                 datastore_id='12345678901234567890123456789012',
-                output_data_config={'S3Configuration': {'S3Uri': 'invalid-uri'}},
+                output_data_config={'s3_configuration': {'s3_uri': 's3://bucket/export'}},
                 data_access_role_arn='arn:aws:iam::123456789012:role/HealthLakeRole',
             )
 

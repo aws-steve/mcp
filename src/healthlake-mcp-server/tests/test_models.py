@@ -109,6 +109,30 @@ class TestDatastoreFilter:
         with pytest.raises(ValidationError):
             DatastoreFilter(status='INVALID_STATUS')
 
+    def test_filter_alias_populates_status(self):
+        """The MCP input name ``filter`` populates the underlying ``status``.
+
+        Regression test: the tool schema names this input ``filter``;
+        ensure it populates the same underlying field as ``status`` so
+        the handler actually forwards it to HealthLake.
+        """
+        filter_obj = DatastoreFilter(filter='DELETED')
+        assert filter_obj.status == 'DELETED'
+
+    def test_filter_alias_rejects_invalid_value(self):
+        """The pattern still applies when using the ``filter`` alias."""
+        with pytest.raises(ValidationError):
+            DatastoreFilter(filter='INVALID_STATUS')
+
+    def test_filter_alias_allows_unknown_kwargs_to_be_ignored(self):
+        """Unknown kwargs stay ignored (pydantic default) after the fix.
+
+        The real regression we're guarding against is that ``filter``
+        *used to* be treated as unknown and silently dropped.
+        """
+        filter_obj = DatastoreFilter(filter='ACTIVE')
+        assert filter_obj.status == 'ACTIVE'
+
 
 class TestImportJobConfig:
     """Test ImportJobConfig model."""

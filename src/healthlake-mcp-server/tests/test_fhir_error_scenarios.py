@@ -171,14 +171,21 @@ class TestFHIRErrorScenarios:
                 await client.search_resources('zz0123456789abcdef0123456789zzzz', 'Patient')
 
     async def test_export_job_error_handling(self, client):
-        """Test export job error handling - covers line 654."""
+        """``ValidationException`` is rewrapped as ``ValueError`` (mirrors import).
+
+        Previously this tool re-raised the raw ``ClientError``, leaving the
+        MCP layer to classify it. The current contract matches
+        ``start_import_job``: AWS error codes are mapped to the exception
+        types the MCP layer already recognises (``ValidationException`` ->
+        ``ValueError`` -> ``validation_error``).
+        """
         error_response = {'Error': {'Code': 'ValidationException', 'Message': 'Invalid input'}}
         client_error = ClientError(error_response, 'StartFHIRExportJob')
 
         with patch.object(
             client.healthlake_client, 'start_fhir_export_job', side_effect=client_error
         ):
-            with pytest.raises(ClientError):
+            with pytest.raises(ValueError, match='Invalid parameters'):
                 await client.start_export_job(
                     'test-datastore',
                     {'s3_configuration': {'s3_uri': 's3://bucket/output'}},
@@ -186,20 +193,31 @@ class TestFHIRErrorScenarios:
                 )
 
     async def test_pagination_next_url_extraction(self, client):
-        """``next_token`` is the opaque ``page`` value from the next link."""
+        """``next_token`` packs the ``page`` value into a v2 opaque token.
+
+        The caller only sees an opaque string; internally it encodes both
+        the HealthLake ``page`` cursor and the ``_count`` that was in
+        effect when the cursor was emitted (see ``_encode_pagination_token``).
+        """
+        from awslabs.healthlake_mcp_server.fhir_operations import _decode_pagination_token
+
         bundle_with_next = {
             'resourceType': 'Bundle',
             'link': [
                 {'relation': 'self', 'url': 'https://example.com/self'},
-                {'relation': 'next', 'url': 'https://example.com/next?page=PAGE2TOKEN'},
+                {'relation': 'next', 'url': 'https://example.com/next?_count=25&page=PAGE2TOKEN'},
             ],
             'entry': [],
         }
 
         result = client._process_bundle(bundle_with_next)
         assert result['pagination']['has_next'] is True
-        # Opaque token - just the page value, not a URL.
-        assert result['pagination']['next_token'] == 'PAGE2TOKEN'
+        token = result['pagination']['next_token']
+        # Token is opaque (not the bare ``page`` value).
+        assert isinstance(token, str) and token
+        # Decoded, it preserves both the cursor and the server-side count.
+        decoded = _decode_pagination_token(token)
+        assert decoded == {'page': 'PAGE2TOKEN', 'count': 25}
 
     async def test_import_job_with_kms_key(self, client):
         """Test import job with KMS key - covers line 599."""
